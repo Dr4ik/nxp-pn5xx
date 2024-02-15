@@ -393,114 +393,12 @@ static const struct file_operations pn54x_dev_fops = {
 };
 
 
-/*
- * Handlers for alternative sources of platform_data
- */
-#ifdef CONFIG_OF
-/*
- * Translate OpenFirmware node properties into platform_data
- */
-static int pn54x_get_pdata(struct device *dev,
-							struct pn544_i2c_platform_data *pdata)
-{
-	struct device_node *node;
-	u32 flags;
-	int val;
-
-	/* make sure there is actually a device tree node */
-	node = dev->of_node;
-	if (!node)
-		return -ENODEV;
-
-	memset(pdata, 0, sizeof(*pdata));
-
-	/* read the dev tree data */
-
-	/* ven pin - enable's power to the chip - REQUIRED */
-	val = of_get_named_gpio_flags(node, "enable-gpios", 0, &flags);
-	if (val >= 0) {
-		pdata->ven_gpio = val;
-	}
-	else {
-		dev_err(dev, "VEN GPIO error getting from OF node\n");
-		return val;
-	}
-
-	/* firm pin - controls firmware download - OPTIONAL */
-	val = of_get_named_gpio_flags(node, "firmware-gpios", 0, &flags);
-	if (val >= 0) {
-		pdata->firm_gpio = val;
-	}
-	else {
-		pdata->firm_gpio = GPIO_UNUSED;
-		dev_warn(dev, "FIRM GPIO <OPTIONAL> error getting from OF node\n");
-	}
-
-	/* irq pin - data available irq - REQUIRED */
-	val = of_get_named_gpio_flags(node, "interrupt-gpios", 0, &flags);
-	if (val >= 0) {
-		pdata->irq_gpio = val;
-	}
-	else {
-		dev_err(dev, "IRQ GPIO error getting from OF node\n");
-		return val;
-	}
-
-	/* clkreq pin - controls the clock to the PN547 - OPTIONAL */
-	val = of_get_named_gpio_flags(node, "nxp,pn54x-clkreq", 0, &flags);
-	if (val >= 0) {
-		pdata->clkreq_gpio = val;
-	}
-	else {
-		pdata->clkreq_gpio = GPIO_UNUSED;
-		dev_warn(dev, "CLKREQ GPIO <OPTIONAL> error getting from OF node\n");
-	}
-
-	/* handle the regulator lines - these are optional
-	 * PVdd - pad Vdd (544, 547)
-	 * Vbat - Battery (544, 547)
-	 * PMUVcc - UICC Power (544, 547)
-	 * SEVdd - SE Power (544)
-	 *
-	 * Will attempt to load a matching Regulator Resource for each
-	 * If no resource is provided, then the input will not be controlled
-	 * Example: if only PVdd is provided, it is the only one that will be
-	 *  turned on/off.
-	 */
-	pdata->pvdd_reg = regulator_get(dev, "nxp,pn54x-pvdd");
-	if(IS_ERR(pdata->pvdd_reg)) {
-		pr_err("%s: could not get nxp,pn54x-pvdd, rc=%ld\n", __func__, PTR_ERR(pdata->pvdd_reg));
-		pdata->pvdd_reg = NULL;
-	}
-
-	pdata->vbat_reg = regulator_get(dev, "nxp,pn54x-vbat");
-	if (IS_ERR(pdata->vbat_reg)) {
-		pr_err("%s: could not get nxp,pn54x-vbat, rc=%ld\n", __func__, PTR_ERR(pdata->vbat_reg));
-		pdata->vbat_reg = NULL;
-	}
-
-	pdata->pmuvcc_reg = regulator_get(dev, "nxp,pn54x-pmuvcc");
-	if (IS_ERR(pdata->pmuvcc_reg)) {
-		pr_err("%s: could not get nxp,pn54x-pmuvcc, rc=%ld\n", __func__, PTR_ERR(pdata->pmuvcc_reg));
-		pdata->pmuvcc_reg = NULL;
-	}
-
-	pdata->sevdd_reg = regulator_get(dev, "nxp,pn54x-sevdd");
-	if (IS_ERR(pdata->sevdd_reg)) {
-		pr_err("%s: could not get nxp,pn54x-sevdd, rc=%ld\n", __func__, PTR_ERR(pdata->sevdd_reg));
-		pdata->sevdd_reg = NULL;
-	}
-
-	return 0;
-}
-#else
 static int pn54x_get_pdata(struct device *dev,
 							struct pn544_i2c_platform_data *pdata)
 {
 	pdata = dev->platform_data;
 	return 0;
 }
-#endif
 
 
 /*
@@ -510,8 +408,7 @@ static int pn54x_get_pdata(struct device *dev,
  static int __devinit pn54x_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 #else
-static int pn54x_probe(struct i2c_client *client,
-		const struct i2c_device_id *id)
+static int pn54x_probe(struct i2c_client *client)
 #endif
 {
 	int ret;
@@ -692,7 +589,7 @@ err_ven:
 #ifdef KERNEL_3_4_AND_OLDER
 static int __devexit pn54x_remove(struct i2c_client *client)
 #else
-static int pn54x_remove(struct i2c_client *client)
+static void pn54x_remove(struct i2c_client *client)
 #endif
 {
 	struct pn54x_dev *pn54x_dev;
@@ -716,20 +613,13 @@ static int pn54x_remove(struct i2c_client *client)
 
 	kfree(pn54x_dev);
 
-	return 0;
+	return;
 }
 
 /*
  *
  */
-#ifdef CONFIG_OF
-static struct of_device_id pn54x_dt_match[] = {
-	{ .compatible = "nxp,pn547", },
-	{ .compatible = "nxp,pn544", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, pn54x_dt_match);
-#endif
+
 
 static const struct i2c_device_id pn54x_id[] = {
 	{ "pn547", 0 },
@@ -748,7 +638,6 @@ static struct i2c_driver pn54x_driver = {
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= "pn544",
-		.of_match_table = pn54x_dt_match,
 	},
 };
 
